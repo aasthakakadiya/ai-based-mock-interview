@@ -2,7 +2,7 @@
 !apt install tesseract-ocr -y
 !apt install poppler-utils -y
 !pip install pytesseract pdf2image transformers openai PyPDF2 python-docx docx2txt
-!pip install openai
+
 # === Imports ===
 from google.colab import files
 from pathlib import Path
@@ -15,14 +15,9 @@ import re
 import torch
 from transformers import BertTokenizer, BertForQuestionAnswering
 import openai
-import os
-from dotenv import load_dotenv
-load_dotenv()
 
 # === Step 1: Upload Resume ===
-
-openai.api_key = os.getenv("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")
-
+print("📄 Please upload your resume (.pdf or .docx):")
 uploaded = files.upload()
 
 # === Step 2: Extract Text ===
@@ -46,12 +41,12 @@ try:
                 if page_text:
                     text += page_text
         if not text.strip():
-            print("Fallback to OCR (scanned PDF detected)...")
+            print("⚠️ Fallback to OCR (scanned PDF detected)...")
             text = extract_text_from_scanned_pdf(file_path)
     elif file_path.suffix == ".docx":
         text = docx2txt.process(file_path)
     else:
-        raise ValueError("Only .pdf or .docx files are supported.")
+        raise ValueError("❌ Only .pdf or .docx files are supported.")
 except Exception as e:
     print(f"Error reading resume file: {e}")
 
@@ -74,7 +69,7 @@ def extract_skills(text):
 skills = extract_skills(text)
 print("\n✅ Extracted Skills:", skills)
 
-# === Step 4: Load BERT Model ===
+# === Step 4: Load BERT Model for QA ===
 bert_tokenizer = BertTokenizer.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
 bert_model = BertForQuestionAnswering.from_pretrained("bert-large-uncased-whole-word-masking-finetuned-squad")
 
@@ -94,7 +89,7 @@ def get_answer_with_bert(question, context):
         return "Error generating answer with BERT."
 
 # === Step 5: Configure OpenAI API Key ===
-openai.api_key = "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"  # ⛔ Replace this with your actual OpenAI API key
+openai.api_key = "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"  # 🔐 Replace with your actual OpenAI API key
 
 def generate_gpt_question(skill):
     try:
@@ -108,11 +103,27 @@ def generate_gpt_question(skill):
         )
         return response['choices'][0]['message']['content'].strip()
     except Exception as e:
-        return f"Error generating GPT question for {skill}: {e}"
+        return f"❌ Error generating GPT question for {skill}: {e}"
 
-# === Step 6: Run the Full Pipeline ===
-hotpot_context = "Python is a versatile language that supports object-oriented, functional, and procedural paradigms. Git is a version control system. REST API allows communication between software systems."
+# === Step 6: Sample HotpotQA Context ===
+!pip install datasets
+from datasets import load_dataset
 
+hotpot_data = load_dataset("hotpot_qa", "fullwiki", split="train[:1000]")
+
+def find_context_for_skill(skill, data, max_results=1):
+    for item in data:
+        for context_info in item.get("context", []):  # Iterate through context_info lists
+            title_list = context_info[0]  # Get the title list (first element)
+            paragraph = context_info[1]  # Get the paragraph (second element)
+
+            if isinstance(paragraph, str) and skill.lower() in paragraph.lower():
+                [].append(paragraph)
+                if len([]) >= max_results:
+                    return []
+    return []
+
+# === Step 7: Full Pipeline ===
 print("\n\n--- 🚀 Interview Questions ---\n")
 for skill in skills:
     print(f"🧠 Skill: {skill.capitalize()}")
@@ -120,4 +131,4 @@ for skill in skills:
     print("📘 Context-based Answer:", answer)
     question = generate_gpt_question(skill)
     print("📝 Generated Question:", question)
-    print("\n" + "-"*40 + "\n")
+    print("\n" + "-" * 40 + "\n")
